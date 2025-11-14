@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MNIST MLP – Inference visualizer</title>
+  <script type="module" crossorigin src="./assets/main.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/main.css">
+</head>
+<body>
+
+        <!-- Runtime English translation (non-destructive) -->
+        <script>
+            // Lightweight DOM text replacer mapping common German UI strings -> English.
+            // This runs on DOMContentLoaded and replaces text nodes in-place so the
+            // original source remains unchanged and the change is reversible.
+            (function(){
+                const MAP = {
+                    'Zeichnen:': 'Draw:',
+                    'Auf dem Raster klicken und ziehen (Rechtsklick zum Löschen)': 'Click and drag on the grid (right-click to erase)',
+                    '3D-Steuerung:': '3D controls:',
+                    'Linke Taste + ziehen = drehen': 'Left mouse + drag = rotate',
+                    'Rechte Taste + ziehen = verschieben': 'Right mouse + drag = pan',
+                    'Scrollrad = zoomen': 'Scroll = zoom',
+                    'Touch-Steuerung': 'Touch controls',
+                    'Tippen und auf dem Raster ziehen': 'Tap and drag on the grid',
+                    'Drehen:': 'Rotate:',
+                    'Mit einem Finger ziehen': 'Drag with one finger',
+                    'Verschieben:': 'Pan:',
+                    'Mit zwei Fingern bewegen': 'Move with two fingers',
+                    'Zoomen:': 'Zoom:',
+                    'Trainingsverlauf': 'Training timeline',
+                    'Trainingsfortschritt': 'Training progress',
+                    'MNIST-Ziffernklassifikation – Visualisierung der Inferenz': 'MNIST digit classification – inference visualizer',
+                    'Interaktive Visualisierung eines neuronalen Netzes': 'Interactive visualization of a neural network',
+                    'So funktioniert es:': 'How it works:',
+                    'Netzarchitektur (Standardexport):': 'Network architecture (default export):',
+                    '3D-Steuerung:': '3D controls:',
+                    'Farbkodierung:': 'Color coding:',
+                    'Eigenes Modell trainieren:': 'Train your own model:',
+                    'Echtzeitfunktionen:': 'Realtime features:',
+                    'Erweiterte Einstellungen': 'Advanced settings',
+                    'Maximale Verbindungen pro Neuron': 'Max connections per neuron',
+                    'Schwache Verbindungen ausblenden': 'Hide weak connections',
+                    'Verbindungsdicke': 'Connection thickness',
+                    'Strichstärke': 'Brush thickness',
+                    'Strichintensität': 'Brush strength',
+                    'Das Netzwerk ist bewusst kompakt gehalten, um eine flüssige Echtzeitdarstellung zu gewährleisten. Sie können gern mit anderen Schichtgrößen neu trainieren – halten Sie die Architektur nur schlank, damit die 3D-Ansicht reaktionsschnell bleibt.': 'The network is intentionally compact to keep a smooth real-time visualization. You can retrain with different layer sizes — keep the architecture modest so the 3D view stays responsive.'
+                };
+
+                function replaceTextNodes(node){
+                    if(node.nodeType === Node.TEXT_NODE){
+                        let text = node.nodeValue;
+                        for(const key in MAP){
+                            if(text.includes(key)){
+                                text = text.split(key).join(MAP[key]);
+                            }
+                        }
+                        if(text !== node.nodeValue) node.nodeValue = text;
+                    } else {
+                        for(const child of Array.from(node.childNodes)) replaceTextNodes(child);
+                    }
+                }
+
+                document.addEventListener('DOMContentLoaded', function(){
+                    // Update langs and title
+                    try{ document.documentElement.lang = 'en'; }catch(e){}
+                    replaceTextNodes(document.body);
+
+                    // Fix some known element attributes and titles explicitly
+                    const timelineTitle = document.querySelector('.timeline-title');
+                    if(timelineTitle && timelineTitle.textContent.trim() === 'Trainingsverlauf') timelineTitle.textContent = 'Training timeline';
+                    const timelineSlider = document.getElementById('timelineSlider');
+                    if(timelineSlider) timelineSlider.setAttribute('aria-label','Training progress');
+                    const advancedTitle = document.getElementById('advancedSettingsTitle');
+                    if(advancedTitle && advancedTitle.textContent.trim() === 'Erweiterte Einstellungen') advancedTitle.textContent = 'Advanced settings';
+                });
+            })();
+        </script>
+
+    <!-- 2D Grid Overlay -->
+    <div id="overlay2d" class="overlay-2d">
+      <div class="container">
+        <div id="gridContainer" class="grid-container"></div>
+      </div>
+    </div>
+
+    <!-- Reset Button -->
+    <div id="resetButtonContainer" class="reset-button-container">
+        <button id="resetBtn">✖</button>
+    </div>
+
+    <!-- Prediction Chart Overlay -->
+    <div id="predictionOverlay" class="prediction-overlay">
+        <div class="prediction-container">
+            <div id="predictionChart"></div>
+        </div>
+        <div id="networkInfoPanel" class="network-info-panel"></div>
+    </div>
+
+    <!-- Instructions Overlay -->
+    <div id="instructionsOverlay" class="instructions-overlay">
+        <div class="instructions-container">
+            <div class="instructions-content">
+                <p><strong>Zeichnen:</strong> Auf dem Raster klicken und ziehen (Rechtsklick zum Löschen)</p>
+                <p><strong>3D-Steuerung:</strong> • Linke Taste + ziehen = drehen • Rechte Taste + ziehen = verschieben • Scrollrad = zoomen</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile Instructions Overlay -->
+    <div id="mobileInstructionsOverlay" class="mobile-instructions-overlay">
+        <div class="mobile-instructions-content">
+            <div class="mobile-instructions-title">Touch-Steuerung</div>
+            <ul class="mobile-gesture-list">
+                <li><strong>Zeichnen:</strong> Tippen und auf dem Raster ziehen</li>
+                <li><strong>Drehen:</strong> Mit einem Finger ziehen</li>
+                <li><strong>Verschieben:</strong> Mit zwei Fingern bewegen</li>
+                <li><strong>Zoomen:</strong> Finger zusammenziehen oder spreizen</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- Floating Controls -->
+    <div class="floating-controls">
+        <button
+            id="advancedSettingsButton"
+            class="floating-button advanced-settings-button"
+            aria-haspopup="dialog"
+            aria-controls="advancedSettingsModal"
+            type="button"
+        >
+            <span>⚙</span>
+        </button>
+        <button
+            id="infoButton"
+            class="floating-button info-button"
+            aria-haspopup="dialog"
+            aria-controls="infoModal"
+            type="button"
+        >
+            <span>i</span>
+        </button>
+    </div>
+
+    <!-- MNIST Sample Images - Bottom Edge -->
+    <div id="mnistImagesContainer" class="mnist-images-container"></div>
+
+    <!-- Neuron Detail Panel -->
+    <div id="neuronDetailPanel" class="neuron-detail-panel" aria-live="polite"></div>
+
+    <!-- Training Timeline Slider -->
+    <div id="timelineOverlay" class="timeline-overlay hidden">
+        <div class="timeline-container">
+            <div class="timeline-header">
+                <span class="timeline-title">Trainingsverlauf</span>
+                <span id="timelineSummary" class="timeline-summary"></span>
+            </div>
+            <input
+                id="timelineSlider"
+                class="timeline-slider"
+                type="range"
+                min="0"
+                value="0"
+                step="1"
+                disabled
+                aria-label="Trainingsfortschritt"
+            >
+            <div class="timeline-meta">
+                <span id="timelineLabel" class="timeline-label"></span>
+                <span id="timelineMetrics" class="timeline-metrics timeline-metrics--empty"></span>
+            </div>
+        </div>
+    </div>
+
+    <a
+      href="https://github.com/DFin/Neural-Network-Visualisation"
+      class="github-link"
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      https://github.com/DFin/Neural-Network-Visualisation
+    </a>
+
+    <!-- Info Modal -->
+    <div id="infoModal" class="info-modal">
+        <div class="info-modal-content">
+            <div class="info-modal-header">
+                <h3>MNIST-Ziffernklassifikation – Visualisierung der Inferenz</h3>
+                <button id="closeInfoModal" class="close-modal-btn">×</button>
+            </div>
+            <div class="info-modal-body">
+                <p><strong>Interaktive Visualisierung eines neuronalen Netzes</strong></p>
+                <p>Diese Anwendung zeigt ein kompaktes Multi-Layer-Perceptron (MLP), das auf MNIST trainiert wurde. Zeichnen Sie eine Ziffer und beobachten Sie, wie die Aktivierungen in Echtzeit durch alle vollvernetzten Schichten propagieren.</p>
+                
+                <h4>So funktioniert es:</h4>
+                <ul>
+                    <li><strong>Zeichnen:</strong> Im 2D-Raster (links oben) klicken und ziehen, um eine Ziffer zu skizzieren</li>
+                    <li><strong>Beobachten:</strong> Verfolgen Sie, wie Ihre Skizze durch die Schichten des Netzes im 3D-Raum wandert</li>
+                    <li><strong>Vorhersage:</strong> Prüfen Sie die Wahrscheinlichkeit für jede Ziffer (0–9) im Diagramm (rechts oben)</li>
+                </ul>
+
+                <h4>Netzarchitektur (Standardexport):</h4>
+                <ul>
+                    <li><strong>Eingabeschicht:</strong> 28×28 Pixelraster (Ihre Zeichnung)</li>
+                    <li><strong>Dichtes Layer 1:</strong> 784 → 64 Neuronen mit ReLU</li>
+                    <li><strong>Dichtes Layer 2:</strong> 64 → 32 Neuronen mit ReLU</li>
+                    <li><strong>Ausgabeschicht:</strong> 32 → 10 Logits → Softmax-Wahrscheinlichkeiten</li>
+                </ul>
+
+                <h4>3D-Steuerung:</h4>
+                <ul>
+                    <li><strong>Drehen:</strong> Linke Maustaste gedrückt halten und ziehen</li>
+                    <li><strong>Verschieben:</strong> Rechte Maustaste gedrückt halten und ziehen</li>
+                    <li><strong>Zoomen:</strong> Mausrad benutzen</li>
+                </ul>
+
+                <h4>Farbkodierung:</h4>
+                <ul>
+                    <li><strong>Knoten:</strong> Die Farbe zeigt die Aktivierungsstärke (dunkle Blautöne für niedrige/negative Werte, kräftige Korallenfarben für starke positive Aktivierungen)</li>
+                    <li><strong>Verbindungen:</strong> Warme Farben kennzeichnen starke positive Beiträge, kühle Töne negative Einflüsse, gedämpfte Linien nahezu Null.</li>
+                </ul>
+
+                <h4>Eigenes Modell trainieren:</h4>
+                <ul>
+                    <li><code>python training/mlp_train.py</code> starten, um das MLP zu trainieren (inkl. Apple-Metal-Beschleunigung, falls verfügbar).</li>
+                    <li>Das Skript schreibt <code>exports/mlp_weights.json</code>, das der Visualisierer beim Laden einliest.</li>
+                    <li>Anzahl versteckter Neuronen, Epochen oder Exportpfade über die in <code>training/mlp_train.py</code> dokumentierten CLI-Optionen verändern.</li>
+                </ul>
+
+                <h4>Echtzeitfunktionen:</h4>
+                <ul>
+                    <li><strong>Schichtaktivierungen:</strong> Instanzen von Kugeln zeigen Aktivierungen pro Neuron mit farbcodierter Stärke.</li>
+                    <li><strong>Wichtige Verbindungen:</strong> Jedes Zielneuron hebt seine stärksten Eingangsgewichte für bessere Lesbarkeit hervor.</li>
+                    <li><strong>Live-Wahrscheinlichkeiten:</strong> Das Balkendiagramm aktualisiert die Logits → Softmax-Werte in Echtzeit.</li>
+                </ul>
+
+                <p>Das Netzwerk ist bewusst kompakt gehalten, um eine flüssige Echtzeitdarstellung zu gewährleisten. Sie können gern mit anderen Schichtgrößen neu trainieren – halten Sie die Architektur nur schlank, damit die 3D-Ansicht reaktionsschnell bleibt.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Advanced Settings Modal -->
+    <div id="advancedSettingsModal" class="advanced-modal" role="dialog" aria-modal="true" aria-labelledby="advancedSettingsTitle">
+        <div class="advanced-modal-content">
+            <div class="advanced-modal-header">
+                <h3 id="advancedSettingsTitle">Erweiterte Einstellungen</h3>
+                <button id="closeAdvancedSettings" class="close-modal-btn" type="button">×</button>
+            </div>
+            <div class="advanced-modal-body">
+                <div class="advanced-control">
+                    <label for="connectionLimitSlider" class="advanced-label">
+                        Maximale Verbindungen pro Neuron
+                    </label>
+                    <div class="advanced-slider">
+                        <input
+                            id="connectionLimitSlider"
+                            type="range"
+                            min="1"
+                            max="64"
+                            step="1"
+                            value="24"
+                        >
+                        <span id="connectionLimitValue" class="advanced-value">24</span>
+                    </div>
+                    <p class="advanced-hint">
+                        Steuert wie viele der stärksten eingehenden Gewichte pro Zielneuron gleichzeitig dargestellt werden; hohe Werte können die Darstellung verlangsamen.
+                    </p>
+                </div>
+                <div class="advanced-control">
+                    <label for="connectionThresholdSlider" class="advanced-label">
+                        Schwache Verbindungen ausblenden
+                    </label>
+                    <div class="advanced-slider">
+                        <input
+                            id="connectionThresholdSlider"
+                            type="range"
+                            min="0"
+                            max="0.5"
+                            step="0.0005"
+                            value="0"
+                        >
+                        <span id="connectionThresholdValue" class="advanced-value">0.0000</span>
+                    </div>
+                    <p class="advanced-hint">
+                        Blendet Verbindungen mit geringer absoluter Gewichtung aus; 0 zeigt alle Verbindungen.
+                    </p>
+                </div>
+                <div class="advanced-control">
+                    <label for="connectionThicknessSlider" class="advanced-label">
+                        Verbindungsdicke
+                    </label>
+                    <div class="advanced-slider">
+                        <input
+                            id="connectionThicknessSlider"
+                            type="range"
+                            min="0.001"
+                            max="0.03"
+                            step="0.001"
+                        >
+                        <span id="connectionThicknessValue" class="advanced-value"></span>
+                    </div>
+                    <p class="advanced-hint">
+                        Passt den Radius der Verbindungszylinder an; höhere Werte machen alle Linien sichtbar dicker.
+                    </p>
+                </div>
+                <div class="advanced-control">
+                    <label for="brushThicknessSlider" class="advanced-label">
+                        Strichstärke
+                    </label>
+                    <div class="advanced-slider">
+                        <input
+                            id="brushThicknessSlider"
+                            type="range"
+                            min="0.4"
+                            max="4"
+                            step="0.1"
+                            value="1.4"
+                        >
+                        <span id="brushThicknessValue" class="advanced-value">1.4</span>
+                    </div>
+                    <p class="advanced-hint">
+                        Kleinere Werte erzeugen feinere Linien; größere Werte füllen das Raster schneller aus.
+                    </p>
+                </div>
+                <div class="advanced-control">
+                    <label for="brushStrengthSlider" class="advanced-label">
+                        Strichintensität
+                    </label>
+                    <div class="advanced-slider">
+                        <input
+                            id="brushStrengthSlider"
+                            type="range"
+                            min="0.3"
+                            max="1"
+                            step="0.05"
+                            value="0.95"
+                        >
+                        <span id="brushStrengthValue" class="advanced-value">95%</span>
+                    </div>
+                    <p class="advanced-hint">
+                        Bestimmt, wie stark ein Pinselstrich die Pixelhelligkeit erhöht.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://unpkg.com/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    
+
+
+
+    <!-- 100% privacy-first analytics -->
+    <script data-collect-dnt="true" async src="https://scripts.simpleanalyticscdn.com/latest.js"></script>
+  
+</body>
+</html>
