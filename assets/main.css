@@ -899,17 +899,6 @@ body > canvas {
   font-size: 0.95rem;
 }
 
-.github-link {
-  position: fixed;
-  bottom: 4px;
-  right: 12px;
-  z-index: 24;
-  font-size: 0.58rem;
-  letter-spacing: 0.005em;
-  color: rgba(214, 226, 255, 0.6);
-  text-decoration: none;
-  transition: color 140ms ease;
-}
 
 .github-link:hover {
   color: rgba(255, 255, 255, 0.85);
